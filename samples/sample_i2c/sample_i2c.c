@@ -132,6 +132,48 @@ int i2c_read_bytes(int fd,unsigned char dev_addr,unsigned char reg_addr,unsigned
 	return 0;
 }
 
+/**
+ *这里的寄存器地址是双字节 16bit
+ * 
+ * 
+ * */
+int i2c_read_bytes_dou_reg(int fd,unsigned char dev_addr,int reg_addr,unsigned char *buf,unsigned int len)
+{
+	int ret = 0;
+    struct i2c_msg message[2];
+
+    //寄存器地址高低位交换
+    int tmp1, tmp2;
+    tmp1 = ((reg_addr & 0xff00)>>8); // 0x1234 & 0xff00 = 0x1200 >> 8 = 0x0012
+    tmp2 = ((reg_addr & 0x00ff)<<8); // 0x1234 & 0x00ff = 0x0034 << 8 = 0x3400
+    reg_addr = tmp2 | tmp1;
+
+    printf("tmp1: 0x%x tmp2: 0x%x \n", tmp1, tmp2);
+    printf("reg_addr: 0x%x \n", reg_addr);
+
+
+    message[0].addr = dev_addr;//设备地址
+    message[0].flags = 0;   //写标志
+    message[0].buf = &reg_addr;//寄存器地址
+    message[0].len = 2;//sizeof(reg_addr); //这里只取前16bit，两个字节
+
+    message[1].addr = dev_addr;//设备地址
+    message[1].flags = I2C_M_RD; //读标志
+    message[1].buf = buf;
+    message[1].len = sizeof(unsigned char)*len;
+
+    i2c_data.msgs = message;
+    i2c_data.nmsgs = 2;
+
+    ret = ioctl(fd, I2C_RDWR, (unsigned long)&i2c_data);
+    if (ret < 0)
+    {
+		printf("%s:%d I2C: read error:%s\n", __func__, __LINE__, strerror(errno));
+		return ret;
+	}
+	return 0;
+}
+
 
 /**
  * i2c 单字节写
@@ -191,6 +233,59 @@ int i2c_write_bytes(int fd,unsigned char dev_addr,unsigned char reg_addr,unsigne
 	}
 	return 0;
 }
+
+/**
+ * @brief 
+ * 
+ * 地址是16位：
+ * 写入是高字节在前，低字节在后
+ * 例如：
+ *      设备地址：0x12 
+ *      寄存器地址：0x2345
+ * 
+ * 这里的实际写入顺序是：
+ *      0x12 0x45 0x23 
+ * 
+ * 
+ */
+int i2c_write_bytes_dou_reg(int fd,unsigned char dev_addr,int reg_addr, unsigned char *p_value_bytes,unsigned int len)
+{
+	int ret = 0,i = 0;
+    unsigned char buf[10]={0};
+    unsigned char reg_addr1, reg_addr2;
+    struct i2c_msg message;
+    
+    //寄存器高低顺序调换
+    reg_addr1 = (reg_addr & 0xFF00)>>8;
+    reg_addr2 = (reg_addr & 0x00FF);
+    printf("\nreg_addr1: 0x%x, reg_addr2: 0x%x\n", reg_addr1, reg_addr2);
+
+    buf[0] = reg_addr1;//寄存器地址1
+    buf[1] = reg_addr2;//寄存器地址2
+
+    for(i = 0;i < len;i++){
+        buf[i+2] = p_value_bytes[i];
+        printf("buf[%d]= 0x%x \n", i+2, buf[i+2]);
+    }
+    
+    message.addr = dev_addr;//设备地址
+    message.buf = buf;
+    message.flags = 0;//写标志
+    message.len = len+2;//data+reg_addr
+
+    i2c_data.msgs = &message;
+    i2c_data.nmsgs = 1;
+
+	ret = ioctl(fd, I2C_RDWR, &i2c_data);
+	if (ret < 0)
+	{
+		printf("%s:%d write data error:%s\n", __func__, __LINE__, strerror(errno));
+		return -1;
+	}
+	return 0;
+}
+
+
 
 /**
  * I2C功能使用，支持标准Linux接口

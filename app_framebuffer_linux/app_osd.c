@@ -8,6 +8,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include "font_8x16.c"
+
 int fd_fb;
 struct fb_var_screeninfo var;	/* Current var */
 int screen_size;
